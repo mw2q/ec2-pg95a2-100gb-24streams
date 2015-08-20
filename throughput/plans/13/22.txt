@@ -1,0 +1,64 @@
+BEGIN;
+BEGIN
+EXPLAIN
+select
+	cntrycode,
+	count(*) as numcust,
+	sum(c_acctbal) as totacctbal
+from
+	(
+		select
+			substr(c_phone, 1, 2) as cntrycode,
+			c_acctbal
+		from
+			customer
+		where
+			substr(c_phone, 1, 2) in
+				('27', '13', '21', '17', '24', '20', '15')
+			and c_acctbal > (
+				select
+					avg(c_acctbal)
+				from
+					customer
+				where
+					c_acctbal > 0.00
+					and substr(c_phone, 1, 2) in
+						('27', '13', '21', '17', '24', '20', '15')
+			)
+			and not exists (
+				select
+					*
+				from
+					orders
+				where
+					o_custkey = c_custkey
+			)
+	) as vip
+group by
+	cntrycode
+order by
+	cntrycode;
+                                                                    QUERY PLAN                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=9360814.15..9360814.16 rows=3 width=20)
+   Sort Key: (substr((customer.c_phone)::text, 1, 2))
+   InitPlan 1 (returns $0)
+     ->  Aggregate  (cost=529969.27..529969.28 rows=1 width=4)
+           ->  Bitmap Heap Scan on customer customer_1  (cost=66740.49..520363.63 rows=3842253 width=4)
+                 Recheck Cond: ((substr((c_phone)::text, 1, 2) = ANY ('{27,13,21,17,24,20,15}'::text[])) AND (c_acctbal > '0'::double precision))
+                 ->  Bitmap Index Scan on customer_c_phone_idx_c_acctbal  (cost=0.00..65779.93 rows=3842253 width=0)
+                       Index Cond: (substr((c_phone)::text, 1, 2) = ANY ('{27,13,21,17,24,20,15}'::text[]))
+   ->  HashAggregate  (cost=8830844.81..8830844.85 rows=3 width=20)
+         Group Key: substr((customer.c_phone)::text, 1, 2)
+         ->  Hash Anti Join  (cost=6529548.10..8826869.48 rows=530043 width=20)
+               Hash Cond: (customer.c_custkey = orders.o_custkey)
+               ->  Bitmap Heap Scan on customer  (cost=29251.09..419036.62 rows=1410344 width=24)
+                     Recheck Cond: ((substr((c_phone)::text, 1, 2) = ANY ('{27,13,21,17,24,20,15}'::text[])) AND (c_acctbal > $0))
+                     ->  Bitmap Index Scan on customer_c_phone_idx  (cost=0.00..28898.50 rows=1410344 width=0)
+                           Index Cond: ((substr((c_phone)::text, 1, 2) = ANY ('{27,13,21,17,24,20,15}'::text[])) AND (c_acctbal > $0))
+               ->  Hash  (cost=4036900.67..4036900.67 rows=150149867 width=4)
+                     ->  Seq Scan on orders  (cost=0.00..4036900.67 rows=150149867 width=4)
+(18 rows)
+
+COMMIT;
+COMMIT

@@ -1,0 +1,70 @@
+BEGIN;
+BEGIN
+EXPLAIN
+select
+	s_name,
+	s_address
+from
+	supplier,
+	nation
+where
+	s_suppkey in (
+		select
+			ps_suppkey
+		from
+			partsupp
+		where
+			ps_partkey in (
+				select
+					p_partkey
+				from
+					part
+				where
+					p_name like 'smoke%'
+			)
+			and ps_availqty > (
+				select
+					0.5 * sum(l_quantity)
+				from
+					lineitem
+				where
+					l_partkey = ps_partkey
+					and l_suppkey = ps_suppkey
+					and l_shipdate >= '1993-01-01'
+					and l_shipdate < cast(date '1993-01-01' + interval '1 year' as date)
+			)
+	)
+	and s_nationkey = n_nationkey
+	and n_name = 'ROMANIA'
+order by
+	s_name;
+                                                                            QUERY PLAN                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=38817794.30..38817805.16 rows=4344 width=52)
+   Sort Key: supplier.s_name
+   ->  Hash Semi Join  (cost=38793802.61..38817531.82 rows=4344 width=52)
+         Hash Cond: (supplier.s_suppkey = partsupp.ps_suppkey)
+         ->  Nested Loop  (cost=750.42..23870.19 rows=40000 width=56)
+               ->  Seq Scan on nation  (cost=0.00..1.31 rows=1 width=4)
+                     Filter: (n_name = 'ROMANIA'::bpchar)
+               ->  Bitmap Heap Scan on supplier  (cost=750.42..23468.88 rows=40000 width=60)
+                     Recheck Cond: (s_nationkey = nation.n_nationkey)
+                     ->  Bitmap Index Scan on supplier_s_nationkey_s_suppkey_idx  (cost=0.00..740.42 rows=40000 width=0)
+                           Index Cond: (s_nationkey = nation.n_nationkey)
+         ->  Hash  (cost=38791694.57..38791694.57 rows=108609 width=4)
+               ->  Nested Loop  (cost=1.13..38791694.57 rows=108609 width=4)
+                     ->  Index Scan using part_p_name_idx on part  (cost=0.56..8.58 rows=2000 width=4)
+                           Index Cond: (((p_name)::text >= 'smoke'::text) AND ((p_name)::text < 'smokf'::text))
+                           Filter: ((p_name)::text ~~ 'smoke%'::text)
+                     ->  Index Scan using pk_partsupp on partsupp  (cost=0.57..19395.30 rows=54 width=8)
+                           Index Cond: (ps_partkey = part.p_partkey)
+                           Filter: ((ps_availqty)::double precision > (SubPlan 1))
+                           SubPlan 1
+                             ->  Aggregate  (cost=117.27..117.29 rows=1 width=4)
+                                   ->  Index Scan using lineitem_l_partkey_l_quantity_l_shipmode_idx on lineitem  (cost=0.57..117.27 rows=1 width=4)
+                                         Index Cond: (l_partkey = partsupp.ps_partkey)
+                                         Filter: ((l_shipdate >= '1993-01-01'::date) AND (l_shipdate < '1994-01-01'::date) AND (l_suppkey = partsupp.ps_suppkey))
+(24 rows)
+
+COMMIT;
+COMMIT
